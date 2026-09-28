@@ -1,3 +1,55 @@
+# mobilerun-custom
+
+> **This is a modified copy of [Mobilerun](https://github.com/droidrun/mobilerun) by [droidrun](https://github.com/droidrun).**
+> All credit for the framework goes to the original authors. It is based on upstream commit
+> [`e72c1d2`](https://github.com/droidrun/mobilerun/commit/e72c1d2) (June 24, 2026, package version 0.6.8)
+> and is distributed under the original [MIT License](LICENSE).
+> For installation, usage, and full documentation, see the original README below and [docs.mobilerun.ai](https://docs.mobilerun.ai).
+
+This fork adds reliability fixes for running the Android agent with self-hosted and local LLMs. The changes came out of benchmarking mobilerun against Mobile-Agent-v3.5 (`mobile_use`). The full write-up is in [`report.md`](report.md).
+
+## Changes from upstream
+
+### Agent behaviour: `mobilerun/agent/fast_agent/fast_agent.py`
+- **Stuck-loop detection.** If the agent issues the same tool call 3 times in a row, it gets a "LOOP DETECTED" message with alternative strategies: try a different element, tap by coordinates, open the item instead of scrolling, or press Back.
+- **Alternating-loop detection.** A 6-step sliding window catches A/B/A/B patterns (such as click/swipe/click/swipe) that the 3-in-a-row check misses.
+- **Vision escalation on loops.** When a loop is detected, a fresh screenshot goes to the model on the next step even if vision is off.
+- **Step-budget reminder.** Each turn includes a `<step_budget>` note with the current step and the steps remaining, so the model stays goal-focused near the limit.
+
+### XML tool-call parsing: `mobilerun/agent/fast_agent/xml_parser.py`
+- Accepts `<parameter foo>` as well as `<parameter name="foo">`, because Nemotron and some other local models use the shorter form.
+- Strips surrounding whitespace from parameter values.
+
+### System prompt: `mobilerun/config/prompts/fast_agent/system.jinja2`
+- **Browser choice.** The agent prefers Chrome and the YouTube app over Samsung Internet, which plays YouTube inline and blocks the accessibility tree.
+- **Gmail outbox counts as success.** "Sending…", "Outbox" or "No connection" after Send is treated as a completed send. This stops retries that open a blank compose window and create duplicate emails.
+
+### LLM providers
+- **Nvidia NIM** is added as a provider. It uses the OpenAI-compatible endpoint `https://integrate.api.nvidia.com/v1` and reads the `NVIDIA_API_KEY` environment variable. Files: `mobilerun/agent/providers/registry.py`, `mobilerun/agent/utils/llm_picker.py`, `mobilerun/config_manager/env_keys.py`.
+- **OpenRouter** now reads `OPENROUTER_API_KEY` from the environment when no key is passed.
+
+### Security / repository hygiene
+- `mobilerun/agent/utils/oauth/gemini_oauth_code_assist_llm.py`: the Gemini (Antigravity) OAuth client ID and secret are no longer hard-coded. They're read from `GEMINI_OAUTH_CLIENT_ID` and `GEMINI_OAUTH_CLIENT_SECRET`; see [`.env.example`](.env.example).
+- `.gitignore` now also excludes `.env` files, key and certificate files, and `.DS_Store`.
+
+### Additions
+- [`report.md`](report.md) is a comparative benchmark report (mobilerun + Qwen3.6-27B vs mobile_use + GUI-Owl-32B), prepared by Abdelrahman Awagih.
+
+### Benchmark run configuration (not part of this repository's code)
+The report also describes settings used during the benchmark runs: always-on vision (screenshot and accessibility tree every step), `parallel_tools: false`, 40 max steps, human-like typing delays and `show_touches`. These were local configuration and runtime settings. They aren't included here as code changes.
+
+## Environment variables
+
+| Variable | Used for |
+|---|---|
+| `NVIDIA_API_KEY` | Nvidia NIM provider |
+| `OPENROUTER_API_KEY` | OpenRouter provider |
+| `GEMINI_OAUTH_CLIENT_ID`, `GEMINI_OAUTH_CLIENT_SECRET` | Gemini OAuth login (optional) |
+
+---
+
+## Original README
+
 <picture align="center">
   <source media="(prefers-color-scheme: dark)" srcset="./static/mobilerun-dark.png">
   <source media="(prefers-color-scheme: light)" srcset="./static/mobilerun.png">
